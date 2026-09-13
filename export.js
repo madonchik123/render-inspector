@@ -196,7 +196,7 @@ export function luaExport(
   const lines = [
     "-- Reconstructed snapshot values, not original variables or layout logic.",
     "-- Review missing resources, initial draw state and dynamic values before use.",
-    ...warnings.map((w) => "-- " + w),
+    ...warnings.map((w) => "-- " + w.replace(/[\r\n]/g, " ")),
     ...declarations,
     "",
     "local function drawSelection()",
