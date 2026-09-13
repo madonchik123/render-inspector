@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Open Umbrella render captures locally in your browser. Inspect panels, select draw calls, and export Lua."
+    />
+    <meta name="theme-color" content="#11151b" />
+    <title>Render Inspector</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./"
+        ><span class="brand-icon">▱</span> Render Inspector
+        <span class="version">02</span></a
+      ><span id="filename" class="filename">No capture open</span>
+      <div class="top-actions">
+        <button id="open" class="primary">Open JSON</button
+        ><button id="assets">Add images</button><button id="help">Help</button
+        ><a
+          class="icon-button"
+          href="https://github.com/madonchik123/render-inspector"
+          target="_blank"
+          rel="noreferrer"
+          >GitHub ↗</a
+        >
+      </div>
+    </header>
+    <div id="notice" role="status" class="notice" hidden></div>
+    <main class="workspace">
+      <aside class="library">
+        <div class="section-heading">
+          <h2>Layers</h2>
+          <span id="layer-count" class="badge">0</span>
+        </div>
+        <input
+          id="search"
+          type="search"
+          placeholder="Find text, script or method"
+          aria-label="Search layers"
+        />
+        <select id="api-filter" aria-label="Filter drawing API">
+          <option value="">All drawing APIs</option>
+        </select>
+        <div class="tabs" role="group" aria-label="Layer category">
+          <button id="parts-tab" class="active">Parts</button
+          ><button id="helpers-tab">Groups</button
+          ><button id="raw-tab">All calls</button>
+        </div>
+        <div id="layers" class="layers" aria-label="Draw layers"></div>
+        <div id="list-empty" class="muted pad">
+          Open a capture to inspect its layers.
+        </div>
+        <button id="restore" class="quiet" hidden>Show hidden parts</button>
+        <div class="sidebar-foot">
+          <span class="dot"></span> JSON stays on your device
+        </div>
+      </aside>
+      <section class="editor" aria-label="Preview workspace">
+        <div class="canvas-toolbar">
+          <div class="tool-group">
+            <button
+              id="select-panel"
+              title="Select a containing helper group or panel"
+            >
+              Select panel</button
+            ><button id="clear" title="Escape">Clear</button
+            ><button id="hide" title="Delete">Hide</button>
+          </div>
+          <div class="tool-group">
+            <label><input id="wire" type="checkbox" /> Outlines</label
+            ><button id="zoom-out" aria-label="Zoom out">−</button
+            ><button id="fit">Fit</button
+            ><button id="zoom-in" aria-label="Zoom in">+</button
+            ><span id="zoom-label">100%</span>
+          </div>
+        </div>
+        <div id="stage" class="stage">
+          <div class="stage-inner">
+            <canvas
+              id="canvas"
+              width="1920"
+              height="1080"
+              aria-label="Capture preview. Use the layer list for keyboard selection."
+              tabindex="0"
+              hidden
+            ></canvas>
+          </div>
+          <div id="welcome" class="welcome">
+            <div class="file-symbol">{ }</div>
+            <h1>See what draws your UI.</h1>
+            <p>Drop a render capture here, or open a JSON file.</p>
+            <button id="welcome-open" class="primary large">Open capture</button
+            ><button id="example" class="quiet">Try an example →</button
+            ><small
+              >Render · Renderer · LIB_RENDER · Custom helpers<br />Files are
+              read locally. Nothing is uploaded.</small
+            >
+          </div>
+        </div>
+        <div class="timeline">
+          <button id="prev" aria-label="Previous frame">‹</button
+          ><button id="play" aria-label="Play capture">▶</button
+          ><button id="next" aria-label="Next frame">›</button
+          ><label
+            >Frame
+            <select id="frame" aria-label="Capture frame"></select></label
+          ><span class="divider"></span
+          ><label class="draw-step"
+            >Draw order
+            <input
+              id="step"
+              type="range"
+              min="0"
+              max="1"
+              value="1"
+              aria-label="Draw order cutoff" /></label
+          ><span id="step-label">0 / 0</span>
+        </div>
+        <footer>
+          <span id="hint"
+            >Click a part · Drag to select · Ctrl-click to add · Right-click to
+            copy</span
+          ><span id="coordinates"></span>
+        </footer>
+      </section>
+      <aside class="properties">
+        <div class="section-heading">
+          <h2>Selection</h2>
+          <span id="selected-count" class="badge">0</span>
+        </div>
+        <h3 id="selected-title">Nothing selected</h3>
+        <p id="selected-meta" class="muted">
+          Select a part in the preview or layer list.
+        </p>
+        <button id="export" class="primary full">Export selected Lua</button>
+        <div id="geometry" class="geometry"></div>
+        <details open>
+          <summary>Source</summary>
+          <pre id="source">No source selected.</pre>
+        </details>
+        <details>
+          <summary>Arguments & returns</summary>
+          <pre id="arguments">—</pre>
+        </details>
+        <details>
+          <summary>Preview resolution</summary>
+          <label class="field"
+            >Width<input
+              id="width"
+              type="number"
+              value="1920"
+              min="320"
+              max="7680" /></label
+          ><label class="field"
+            >Height<input
+              id="height"
+              type="number"
+              value="1080"
+              min="200"
+              max="4320" /></label
+          ><button id="resolution" class="full">Apply resolution</button>
+          <p class="muted">Coordinates scale from the capture size.</p>
+        </details>
+        <details>
+          <summary>Capture coverage</summary>
+          <p id="coverage" class="muted">No capture open.</p>
+          <pre id="audit"></pre>
+        </details>
+        <div class="preview-note">
+          Approximate preview. Text metrics and effects may differ. Add local
+          images to replace asset placeholders.
+        </div>
+      </aside>
+    </main>
+    <input id="file" type="file" accept=".json,application/json" hidden /><input
+      id="image-files"
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      multiple
+      hidden
+    />
+    <div id="context" class="context-menu" role="menu" hidden>
+      <button id="ctx-lua" role="menuitem">
+        Copy selected Lua <kbd>Ctrl C</kbd></button
+      ><button id="ctx-json" role="menuitem">Copy selection JSON</button
+      ><button id="ctx-source" role="menuitem">Copy source locations</button>
+      <hr />
+      <button id="ctx-panel" role="menuitem">Select containing panel</button
+      ><button id="ctx-hide" role="menuitem">
+        Hide selected parts <kbd>Del</kbd>
+      </button>
+    </div>
+    <dialog id="export-dialog">
+      <div class="dialog-head">
+        <h2>Export selection</h2>
+        <button id="close-export" aria-label="Close export">×</button>
+      </div>
+      <div class="bar">
+        <label
+          ><input id="scale-code" type="checkbox" checked /> Scale to screen
+          size</label
+        ><label
+          ><input id="context-code" type="checkbox" checked /> Include draw
+          state</label
+        >
+      </div>
+      <p id="export-warning" class="muted"></p>
+      <textarea
+        id="code"
+        spellcheck="false"
+        readonly
+        aria-label="Generated Lua"
+      ></textarea>
+      <div class="dialog-actions">
+        <button id="save-json">Download JSON</button
+        ><button id="save-lua">Download Lua</button
+        ><button id="copy-code" class="primary">Copy Lua</button>
+      </div>
+    </dialog>
+    <dialog id="help-dialog">
+      <div class="dialog-head">
+        <h2>From capture to reusable UI</h2>
+        <button id="close-help" aria-label="Close help">×</button>
+      </div>
+      <ol>
+        <li>
+          Install the
+          <a href="recorder/render_proxy.lua" download
+            >Render Proxy Lua script</a
+          >
+          in Umbrella and reload scripts.
+        </li>
+        <li>
+          Open your UI, then use
+          <strong
+            >Scripts → Tools → Render Inspector → Capture → Recorder</strong
+          >.
+        </li>
+        <li>
+          Capture 30 frames and open <code>render calls.json</code> from the
+          Umbrella directory here.
+        </li>
+        <li>
+          Click a part or drag around a group.
+          <strong>Select panel</strong> expands to its captured helper or
+          background.
+        </li>
+        <li>
+          Export selected Lua. Review resource warnings and dynamic values
+          before using it.
+        </li>
+      </ol>
+      <p>
+        Both Render APIs and exported Lua helpers are supported. Native menu UI,
+        Panorama and cached function aliases can bypass the recorder. “All
+        calls” includes entries that cannot be drawn in the preview.
+      </p>
+      <p>
+        Text and effects are approximations. Clipping and alpha are applied when
+        captured. Render-target content and unknown helpers remain inspectable
+        as data. Copied Lua reconstructs values; it does not recover original
+        variables or callback code.
+      </p>
+      <p class="muted">
+        Shortcuts: Ctrl/Cmd-click adds layers, Ctrl/Cmd-A selects visible parts,
+        Ctrl/Cmd-C copies Lua, Delete hides, Escape clears. The example is
+        synthetic.
+      </p>
+    </dialog>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
