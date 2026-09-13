@@ -19,8 +19,14 @@ local render = {
 	Throw = function() error("original failure") end,
 }
 local originals = table.clone(render)
+local buttons, labels = {}, {}
+local function widget(text)
+	return {text = text, Name = function(self, name) self.text = name end,
+		Disabled = function(self, disabled) self.disabled = disabled end, ToolTip = function() end}
+end
 local menu = {Create = function()
-	return {Label = function() end, Button = function() end}
+	return {Label = function(_, text) local item = widget(text); labels[#labels + 1] = item; return item end,
+		Button = function(_, text, callback) local item = widget(text); item.click = callback; buttons[#buttons + 1] = item; return item end}
 end}
 local libraryCalls = 0
 local library = {default_font = 3, default_font_awesome = 8, text = function(...) libraryCalls += 1; return 9 end}
@@ -39,7 +45,11 @@ frame += 40
 recorder.OnUpdateEx()
 assert(exported == nil, "Loading scripts must not capture or write a file")
 assert(recorder.export() == false, "No capture exists until explicitly requested")
-recorder.capture(1)
+assert(#buttons == 2)
+buttons[1].click()
+recorder.OnUpdateEx()
+assert(buttons[1].disabled and buttons[2].disabled)
+assert(recorder.capture(30) == false, "A second capture must not discard the current one")
 frame += 1
 local result = table.pack(render.FilledRect(point, point, color, nil, 2))
 assert(result.n == 3 and result[1] == nil and result[2] == 7 and result[3] == nil)
@@ -57,6 +67,8 @@ assert(exported.calls[3].parentId == 2 and exported.calls[4].parentId == nil)
 assert(exported.resources['Render:LoadFont:42'].args[1] == "Arial")
 assert(exported.calls[1].results[2] == 7)
 assert(exported.calls[2].args[1].kind == "function", "Do not retain callback")
+assert(labels[1].text:find("Saved 4 calls", 1, true))
+assert(not buttons[1].disabled and not buttons[2].disabled)
 recorder.capture(1)
 frame += 1
 local cyclic = {};cyclic.self = cyclic
@@ -81,6 +93,15 @@ assert(#exported.calls == 2 and exported.calls[1].method == 'SetDrawColor')
 assert(exported.calls[2].library == 'Renderer' and exported.calls[2].args[3] == 30)
 assert(exported.resources['Renderer:LoadFont:42'].args[1] == 'Tahoma')
 assert(exported.resources['Render:LoadFont:42'].args[1] == 'Arial')
+local discovered = false
+xhelpers.XRender.DrawNewPanel = function() discovered = true end
+buttons[2].click()
+frame += 1;xhelpers.XRender.DrawNewPanel()
+frame += 30;recorder.OnUpdateEx()
+assert(discovered and #exported.calls == 1, "Capture buttons refresh discovery automatically")
+assert(exported.lastFrame - exported.firstFrame == 29)
+buttons[1].click();frame += 2;recorder.OnUpdateEx()
+assert(labels[1].text:find("Saved 0 calls", 1, true))
 local replacement = function() end
 render.Text = replacement
 recorder.stop()

@@ -30,10 +30,11 @@ local state = {
 	snapshotBytes = 0,
 	installed = true,
 	owners = {}, audit = {}, parentId = nil,
+	message = "Ready - open your panel, then capture.",
 }
+local ui = {}
 local helpers = {}
 
--- Snapshots never keep caller-owned tables, callbacks, or native userdata alive.
 function helpers.snapshot(value, budget, depth, seen)
 	budget.left = budget.left - 1
 	if budget.left < 0 then return {kind = "truncated"} end
@@ -130,7 +131,7 @@ function helpers.install(name, original, owner, library)
 		if call then
 			local parentId = state.parentId
 			state.parentId = call.id
-			-- Restore nesting even on a Lua error, then rethrow the original error.
+
 			local outcome = table.pack(pcall(original, ...))
 			state.parentId = parentId
 			if not outcome[1] then
@@ -169,7 +170,6 @@ local function drawMethod(name)
 		or lower:find("render", 1, true) ~= nil or lower == "circleinworld"
 end
 
--- Explicit registration also covers custom helper tables not exported by XHelpers.
 function recorder.watch(owner, label, names)
 	if type(owner) ~= "table" or getmetatable(owner) ~= nil then return 0 end
 	local count, functions = 0, {}
@@ -237,6 +237,8 @@ end
 
 function recorder.capture(frameCount)
 	if not state.installed then return false end
+	if state.active or state.pendingExport then return false end
+	recorder.discover()
 	frameCount = math.max(1, math.min(120, math.floor(frameCount or 30)))
 	state.calls, state.sources = JSON:newArray(), JSON:newArray()
 	state.sourceIds, state.frameCounts = {}, {}
@@ -244,19 +246,20 @@ function recorder.capture(frameCount)
 	state.dropped = 0
 	state.label = "User UI capture"
 	state.snapshotBytes = 0
+	state.demoUntil = nil
 	state.firstFrame = GlobalVars.GetFrameCount() + 1
 	state.lastFrame = state.firstFrame + frameCount - 1
 	local size = Render.ScreenSize()
 	state.screen = {width = size.x, height = size.y}
 	state.active, state.pendingExport = true, false
+	state.message = "Capturing " .. frameCount .. " frames..."
 	print("[render-proxy] Capturing next " .. frameCount .. " frames.")
 	return true
 end
 
 function recorder.demo()
-	if not state.installed then return false end
+	if not recorder.capture(30) then return false end
 	state.demoFont = Render.LoadFont("Arial", 0, 500)
-	recorder.capture(30)
 	state.label = "TEST PANEL ONLY - recorder validation"
 	state.demoUntil = state.lastFrame
 	return true
@@ -303,17 +306,25 @@ function recorder.export()
 	local encoded = JSON:encode(data)
 	local file, err = io.open(cfg.output .. ".json", "w")
 	if not file then
+		state.message = "Save failed - " .. tostring(err)
 		print("[render-proxy] Export failed: " .. tostring(err))
 		return false
 	end
 	local written, writeError = file:write(encoded)
 	local closed, closeError = file:close()
 	if not written or not closed then
+		state.message = "Save failed - " .. tostring(writeError or closeError)
 		print("[render-proxy] Export failed: " .. tostring(writeError or closeError))
 		return false
 	end
 	print("[render-proxy] Exported " .. #state.calls .. " calls, " .. #state.sources
 		.. " sources, " .. state.dropped .. " dropped to " .. cfg.output .. ".json")
+	if #state.calls == 0 then
+		state.message = "Saved 0 calls - open your panel and try again."
+	else
+		state.message = "Saved " .. #state.calls .. " calls to render calls.json"
+		if state.dropped > 0 then state.message = state.message .. " (" .. state.dropped .. " dropped)" end
+	end
 	return true
 end
 
@@ -336,9 +347,26 @@ function recorder.OnUpdateEx()
 		state.pendingExport = false
 		recorder.export()
 	end
+	local message = state.message
+	if not state.installed then
+		message = "Stopped - reload scripts to enable capture."
+	elseif state.active then
+		local count = state.lastFrame - state.firstFrame + 1
+		local elapsed = math.max(0, math.min(count, GlobalVars.GetFrameCount() - state.firstFrame + 1))
+		message = "Capturing " .. elapsed .. "/" .. count .. " frames - " .. #state.calls .. " calls"
+	end
+	if ui.message ~= message then
+		ui.status:Name(message)
+		ui.message = message
+	end
+	local busy = state.active or state.pendingExport or not state.installed
+	if ui.busy ~= busy then
+		ui.frame:Disabled(busy)
+		ui.sequence:Disabled(busy)
+		ui.busy = busy
+	end
 end
 
--- Only functions already present in the plain Lua table are wrapped.
 local functions = {}
 for name, value in next, Render do
 	if type(value) == "function" and not queries[name] then functions[name] = value end
@@ -352,13 +380,12 @@ state.resources["LIB_RENDER.default_font_awesome"] = {library = "LIB_RENDER", me
 Render.__recorder = recorder
 
 local group = Menu.Create("Scripts", "Tools", "Render Inspector", "Capture", "Recorder")
-group:Label("Open the target panel, then capture a short sample.")
-group:Button("Capture next frame", function() recorder.capture(1) end)
-group:Button("Capture next 30 frames", function() recorder.capture(30) end)
-group:Button("Finish capture", function() recorder.finish() end)
-group:Button("Export last capture", function() recorder.export() end)
-group:Button("Capture test panel", function() recorder.demo() end)
-group:Button("Discover drawing helpers", function() recorder.discover() end)
-group:Button("Stop render proxy", function() recorder.stop() end)
+ui.status = group:Label(state.message)
+ui.frame = group:Button("Capture next frame", function() recorder.capture(1) end)
+ui.frame:ToolTip("Snapshot a visible panel. Saves automatically when finished.")
+ui.sequence = group:Button("Capture next 30 frames", function() recorder.capture(30) end)
+ui.sequence:ToolTip("Record changing UI across 30 frames. Saves automatically when finished.")
+local output = group:Label("Saves render calls.json in Umbrella; replaces previous capture.")
+output:ToolTip(cfg.output .. ".json")
 
 return recorder
