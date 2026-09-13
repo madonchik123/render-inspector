@@ -1,5 +1,5 @@
 import {
-  parseCapture,
+  indexFrames,
   validate,
   buildFrame,
   describe,
@@ -11,11 +11,11 @@ import {
   panelSelection,
   descendants,
   union,
-  LIMITS,
 } from "./model.js";
 import { renderScene, assetKey } from "./paint.js";
 import { luaExport, selectionJSON } from "./export.js";
 import { exampleCapture } from "./example.js";
+import { importCapture } from "./import.js";
 
 const $ = (id) => document.getElementById(id),
   canvas = $("canvas"),
@@ -41,6 +41,7 @@ const state = {
   exported: null,
 };
 let noticeTimer;
+let activeImport;
 function notify(message, error = false) {
   clearTimeout(noticeTimer);
   $("notice").textContent = message;
@@ -59,11 +60,14 @@ function clearAssets() {
   state.assets.clear();
 }
 function openData(data, name) {
+  activeImport?.abort();
+  activeImport = null;
   validate(data);
   stopPlay();
   clearAssets();
   state.data = data;
-  state.frames = [...new Set(data.calls.map((c) => c.frame))].sort(
+  const frames = indexFrames(data);
+  state.frames = [...frames.keys()].sort(
     (a, b) => a - b,
   );
   state.selected.clear();
@@ -78,9 +82,7 @@ function openData(data, name) {
   $("width").value = data.screen.width;
   $("height").value = data.screen.height;
   $("frame").replaceChildren();
-  const counts = new Map();
-  for (const c of data.calls)
-    counts.set(c.frame, (counts.get(c.frame) || 0) + 1);
+  const counts = new Map([...frames].map(([frame, calls]) => [frame, calls.length]));
   for (const f of state.frames) {
     const o = document.createElement("option");
     o.value = f;
@@ -122,15 +124,25 @@ function openData(data, name) {
 }
 async function openFile(file) {
   if (!file) return;
+  activeImport?.abort();
+  const request = new AbortController();
+  activeImport = request;
+  stopPlay();
+  const progress = message => {
+    notify(`${message} — ${file.name}`);
+    clearTimeout(noticeTimer);
+  };
+  progress("Opening capture");
   try {
-    if (file.size > LIMITS.bytes)
-      throw Error("Choose a file smaller than 32 MB.");
-    const data = parseCapture(await file.text());
+    const data = await importCapture(file, {signal: request.signal, progress});
+    if (request.signal.aborted) return;
+    activeImport = null;
     openData(data, file.name);
   } catch (e) {
-    notify(e.message, true);
+    if (e.name !== "AbortError") notify(e.message, true);
   } finally {
-    $("file").value = "";
+    if (activeImport === request) activeImport = null;
+    if (!request.signal.aborted) $("file").value = "";
   }
 }
 function setFrame(number) {

@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {BrowserWorker} from './worker-adapter.js';
 
 test('viewer opens example, selects groups and exports through its controls',async()=>{
  const elements=new Map(),raf=[],events={};let clipboard='';
@@ -16,6 +17,7 @@ test('viewer opens example, selects groups and exports through its controls',asy
  globalThis.Option=class extends Element{constructor(text,value){super();this.textContent=text;this.value=value;}};
  globalThis.ResizeObserver=class{observe(){}};globalThis.requestAnimationFrame=fn=>raf.push(fn);globalThis.devicePixelRatio=1;globalThis.innerWidth=1600;globalThis.innerHeight=1000;
  globalThis.setTimeout=()=>1;globalThis.clearTimeout=()=>{};
+ globalThis.Worker=BrowserWorker;
  Object.defineProperty(globalThis,'navigator',{value:{clipboard:{writeText:async text=>{clipboard=text;}}},configurable:true});
  await import('../app.js');
  get('example').click();while(raf.length)raf.shift()();
@@ -25,6 +27,10 @@ test('viewer opens example, selects groups and exports through its controls',asy
  await get('copy-code').onclick();assert.equal(clipboard,get('code').value);get('close-export').click();get('select-panel').click();
  get('width').value=2560;get('height').value=1440;get('resolution').click();while(raf.length)raf.shift()();assert(get('canvas').width>0);
  get('hide').click();assert.equal(get('restore').hidden,false);get('restore').click();
- await get('file').onchange({target:{files:[{name:'broken.json',size:7,text:async()=>'{oops'}]}});
+ await get('file').onchange({target:{files:[new File(['{oops'],'broken.json')]}});
  assert(get('notice').classes.has('error'));assert(get('notice').textContent.includes('valid JSON'));
+ const {exampleCapture}=await import('../example.js');
+ await get('file').onchange({target:{files:[new File([JSON.stringify(exampleCapture())],'uploaded.json')]}});
+ assert.equal(get('filename').textContent,'uploaded.json');assert.equal(get('file').value,'');
+ assert(!get('notice').classes.has('error'));assert(get('notice').textContent.includes('Opened'));
 });

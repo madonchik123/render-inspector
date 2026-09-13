@@ -9,7 +9,7 @@ Files are read on your device. The viewer does not upload captures or imported i
 ## Capture a UI
 
 1. Put `recorder/render_proxy.lua` in your Umbrella scripts directory as `000_render_proxy.lua`. Keep one installed copy. The early name helps installation order; aliases cached before installation cannot be intercepted.
-2. Reload scripts. The recorder discovers exported drawing helpers and captures 30 frames after scripts load.
+2. Reload scripts. The recorder discovers exported drawing helpers and stays idle. Loading or reloading scripts does not start a capture or write a capture file.
 3. Open **Scripts → Tools → Render Inspector → Capture → Recorder**. Open the panel you want to inspect, then use **Capture frame** or **Capture 30 frames**. The separate test-panel action generates an explicitly labeled test capture.
 4. Open `render calls.json` from your Umbrella directory in the website. Captures can include displayed text and source paths; review the file before sharing it with others.
 
@@ -38,7 +38,9 @@ Discovery is bounded to depth 3, 512 tables and 20,000 entries. Captures report 
 
 Clipping, alpha, legacy color and draw order are replayed. Fonts, blur, shadows and some gradients are approximations. Rotation is reported but not replayed. Offscreen render-target children are retained as data rather than incorrectly placed on screen. Missing images show placeholders.
 
-Default limits: 1–120 frames per request, 1,500 calls per frame, 12,000 total calls, approximately 8 MiB of argument snapshots and 512 resources. The browser accepts up to 32 MiB and 30,000 calls. Bounds keep capture and import work finite; Lua hooks still add overhead.
+Recorder limits: 1–120 frames per request, 1,500 calls per frame, 12,000 total calls, approximately 8 MiB of argument snapshots and 512 resources. Capture starts only when you press a capture button or call `capture()`/`demo()`. A requested capture saves when it finishes.
+
+The website parses and checks files in a background worker with visible progress, then indexes calls by frame. Only the selected frame is prepared for preview. Nested helper metadata is preserved without a property-count or nesting-depth rejection, and there is no 30,000-call import limit. Files up to 128 MiB are accepted; larger files get an explicit size message. Opening another file cancels the previous import. Lua hooks still add overhead during capture.
 
 ## Recorder API
 

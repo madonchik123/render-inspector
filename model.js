@@ -1,4 +1,18 @@
-export const LIMITS = { bytes: 32 * 1024 * 1024, calls: 30000, nodes: 500000 };
+export const LIMITS = { bytes: 128 * 1024 * 1024 };
+const captureFrames = new WeakMap();
+
+export function indexFrames(data) {
+  let frames = captureFrames.get(data);
+  if (!frames) {
+    frames = new Map();
+    for (const call of data.calls) {
+      if (!frames.has(call.frame)) frames.set(call.frame, []);
+      frames.get(call.frame).push(call);
+    }
+    captureFrames.set(data, frames);
+  }
+  return frames;
+}
 const finite = (n) => typeof n === "number" && Number.isFinite(n);
 export const vec = (v) => v && finite(v.x) && finite(v.y);
 export const array = (v) => (Array.isArray(v) ? v : []);
@@ -56,30 +70,14 @@ export function validate(value) {
     value.screen.height > 16384
   )
     throw Error("The capture needs a valid screen width and height (1–16384).");
-  if (value.calls.length > LIMITS.calls)
-    throw Error(
-      "This capture exceeds the 30,000-call limit. Capture fewer frames.",
-    );
-  const seen = new Set(),
-    ids = new Set(),
-    stack = [{ v: value, d: 0 }];
-  let count = 0;
-  while (stack.length) {
-    const { v, d } = stack.pop();
-    if (++count > LIMITS.nodes || d > 24)
-      throw Error("The capture is too complex to open.");
-    if (typeof v === "number" && !Number.isFinite(v))
-      throw Error("The capture contains a non-finite number.");
-    if (!v || typeof v !== "object") continue;
-    if (seen.has(v)) throw Error("Cyclic capture data is unsupported.");
-    seen.add(v);
-    for (const x of Object.values(v)) stack.push({ v: x, d: d + 1 });
-  }
+  // Validate the capture envelope and call relationships, not every property of
+  // opaque helper snapshots. Those are retained for inspection, not executed.
+  const ids = new Set();
   for (const c of value.calls) {
     if (
-      !Number.isInteger(c.id) ||
+      !c || typeof c !== "object" || !Number.isSafeInteger(c.id) ||
       ids.has(c.id) ||
-      !Number.isInteger(c.frame) ||
+      !Number.isSafeInteger(c.frame) ||
       typeof c.method !== "string" ||
       !Array.isArray(c.args)
     )
@@ -96,7 +94,7 @@ export function validate(value) {
 }
 export function parseCapture(text) {
   if (new TextEncoder().encode(text).length > LIMITS.bytes)
-    throw Error("Choose a JSON file smaller than 32 MB.");
+    throw Error("This file is over 128 MiB. Split it into smaller captures to fit browser memory.");
   let data;
   try {
     data = JSON.parse(text);
@@ -350,7 +348,7 @@ export function describe(p) {
   );
 }
 export function buildFrame(data, frame) {
-  const calls = data.calls.filter((c) => c.frame === frame),
+  const calls = indexFrames(data).get(frame) || [],
     nodes = calls.map(normalize),
     byId = new Map(nodes.map((n) => [n.call.id, n]));
   let clips = [],

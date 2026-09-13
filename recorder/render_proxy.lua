@@ -328,7 +328,6 @@ end
 
 function recorder.OnScriptsLoaded()
 	recorder.discover()
-	if not state.active then recorder.capture(30) end
 end
 
 function recorder.OnUpdateEx()
